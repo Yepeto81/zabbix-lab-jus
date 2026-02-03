@@ -1,0 +1,241 @@
+---
+- name: Instalación de Zabbix Server 6.0 en Debian 10
+  hosts: zabbix_servers
+  become: yes
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Actualizar caché de apt
+      apt:
+        update_cache: yes
+
+    - name: Instalar paquetes básicos y utilidades
+      apt:
+        name:
+          - apache2
+          - apache2-utils
+          - unzip
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - netcat-openbsd
+          - sudo
+          - strace
+        state: present
+
+    - name: Configurar zona horaria del sistema
+      timezone:
+        name: "{{ php_timezone }}"
+
+    - name: Instalar PHP y extensiones
+      apt:
+        name:
+          - php
+          - libapache2-mod-php
+          - php-cli
+          - php-mysql
+          - php-zip
+          - php-curl
+          - php-xml
+          - php-common
+          - php-fpm
+        state: present
+
+    - name: Generar locale es_US.UTF-8
+      locale_gen:
+        name: en_US.UTF-8
+        state: present
+
+    - name: Configurar PHP CLI ini
+      lineinfile:
+        path: "/etc/php/{{ php_version }}/cli/php.ini"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^max_execution_time =', line: 'max_execution_time = {{ php_max_execution_time }}' }
+        - { regexp: '^memory_limit =', line: 'memory_limit = {{ php_memory_limit }}' }
+        - { regexp: '^cgi.fix_pathinfo =', line: 'cgi.fix_pathinfo = 0' }
+        - { regexp: '^;?date.timezone =', line: 'date.timezone = {{ php_timezone }}' }
+
+    - name: Configurar PHP FPM www.conf
+      lineinfile:
+        path: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^user =', line: 'user = www-data' }
+        - { regexp: '^group =', line: 'group = www-data' }
+        - { regexp: '^listen =', line: 'listen = /run/php/php{{ php_version }}-fpm.sock' }
+        - { regexp: '^;?listen.owner =', line: 'listen.owner = www-data' }
+        - { regexp: '^;?listen.group =', line: 'listen.group = www-data' }
+        - { regexp: '^;?listen.allowed_clients =', line: 'listen.allowed_clients = 0.0.0.0' }
+        - { regexp: '^pm =', line: 'pm = dynamic' }
+
+    - name: Habilitar módulos de Apache para PHP-FPM
+      apache2_module:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - proxy_fcgi
+        - setenvif
+
+    - name: Habilitar configuración de PHP-FPM en Apache
+      command: a2enconf php{{ php_version }}-fpm
+      args:
+        creates: /etc/apache2/conf-enabled/php{{ php_version }}-fpm.conf
+
+    - name: Habilitar e iniciar PHP-FPM
+      service:
+        name: "php{{ php_version }}-fpm"
+        state: started
+        enabled: yes
+
+    - name: Instalar MariaDB Server y dependencias
+      apt:
+        name:
+          - mariadb-server
+          - mariadb-client
+          - python3-mysqldb
+        state: present
+      when: not zabbix_db_external
+
+    - name: Habilitar e iniciar MariaDB
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+      when: not zabbix_db_external
+
+    - name: Asegurar MariaDB (Remover usuarios anónimos)
+      mysql_user:
+        name: ""
+        host_all: yes
+        state: absent
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      when: not zabbix_db_external
+
+    - name: Asegurar MariaDB (Remover BD de test)
+      mysql_db:
+        name: test
+        state: absent
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      when: not zabbix_db_external
+
+    - name: Instalar Firewalld
+      apt:
+        name: firewalld
+        state: present
+
+    - name: Habilitar e iniciar Firewalld
+      service:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Configurar puertos en Firewall
+      firewalld:
+        port: "{{ item }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop: "{{ firewall_ports }}"
+
+    - name: Descargar e instalar repositorio de Zabbix
+      apt:
+        deb: "{{ zabbix_repo_url }}"
+
+    - name: Actualizar apt con el nuevo repositorio
+      apt:
+        update_cache: yes
+
+    - name: Instalar componentes de Zabbix
+      apt:
+        name:
+          - zabbix-server-mysql
+          - zabbix-frontend-php
+          - zabbix-apache-conf
+          - zabbix-sql-scripts
+          - zabbix-agent
+          - zabbix-get
+        state: present
+
+    - name: Habilitar configuración de Zabbix en Apache
+      command: a2enconf zabbix
+      args:
+        creates: /etc/apache2/conf-enabled/zabbix.conf
+
+    - name: Crear base de datos para Zabbix
+      mysql_db:
+        name: "{{ zabbix_db_name }}"
+        encoding: utf8mb4
+        collation: utf8mb4_bin
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      when: not zabbix_db_external
+
+    - name: Crear usuario de base de datos para Zabbix
+      mysql_user:
+        name: "{{ zabbix_db_user }}"
+        password: "{{ zabbix_db_pass }}"
+        priv: "{{ zabbix_db_name }}.*:ALL"
+        state: present
+        host: "{{ 'localhost' if not zabbix_db_external else '%' }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      when: not zabbix_db_external
+
+    - name: Configurar log_bin_trust_function_creators global
+      mysql_variables:
+        variable: log_bin_trust_function_creators
+        value: 1
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      when: not zabbix_db_external
+
+    - name: Verificar si el esquema ya fue importado
+      shell: mysql -u{{ zabbix_db_user }} -p{{ zabbix_db_pass }} {{ zabbix_db_name }} -e "show tables;" | grep users
+      register: zabbix_schema_check
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Importar esquema de Zabbix
+      shell: zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -u{{ zabbix_db_user }} -p{{ zabbix_db_pass }} {{ zabbix_db_name }}
+      when: not zabbix_db_external and zabbix_schema_check.rc != 0
+
+    - name: Desactivar log_bin_trust_function_creators
+      mysql_variables:
+        variable: log_bin_trust_function_creators
+        value: 0
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      when: not zabbix_db_external
+
+    - name: Configurar Zabbix Server conf
+      lineinfile:
+        path: /etc/zabbix/zabbix_server.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^DBHost=', line: 'DBHost={{ zabbix_db_host }}' }
+        - { regexp: '^DBName=', line: 'DBName={{ zabbix_db_name }}' }
+        - { regexp: '^DBUser=', line: 'DBUser={{ zabbix_db_user }}' }
+        - { regexp: '^# DBPassword=', line: 'DBPassword={{ zabbix_db_pass }}' }
+        - { regexp: '^# AllowUnsupportedDBVersions=', line: 'AllowUnsupportedDBVersions=1' }
+
+    - name: Crear configuración del Frontend (Automatic Wizard Bypass)
+      template:
+        src: zabbix.conf.php.j2
+        dest: /etc/zabbix/web/zabbix.conf.php
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Reiniciar y habilitar servicios finales
+      service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: yes
+      loop:
+        - zabbix-server
+        - zabbix-agent
+        - apache2

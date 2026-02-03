@@ -1,0 +1,10 @@
+all:
+  hosts:
+    zabbix_server_host:
+      ansible_host: 10.2.225.243
+      ansible_user: yepeto
+      ansible_become: yes
+  children:
+    zabbix_servers:
+      hosts:
+        zabbix_server_host:
