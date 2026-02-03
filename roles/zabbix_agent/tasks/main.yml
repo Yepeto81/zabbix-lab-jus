@@ -1,0 +1,11 @@
+---
+- name: Instalar Zabbix Agent
+  apt:
+    name: zabbix-agent
+    state: present
+
+- name: Habilitar e iniciar Zabbix Agent
+  service:
+    name: zabbix-agent
+    state: restarted
+    enabled: yes

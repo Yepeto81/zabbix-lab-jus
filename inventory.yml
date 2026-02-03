@@ -4,6 +4,14 @@ all:
       ansible_host: 10.2.225.243
       ansible_user: yepeto
       ansible_become: yes
+      # Variables Globales
+      zabbix_db_external: false
+      zabbix_db_host: localhost
+      zabbix_db_name: zabbix
+      zabbix_db_user: zabbix
+      zabbix_db_pass: "zabbix-pass"
+      zabbix_timezone: "America/Argentina/Buenos_Aires"
+      zabbix_server_name: "Zabbix Server Lab"
   children:
     zabbix_servers:
       hosts:
