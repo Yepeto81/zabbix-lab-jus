@@ -1,28 +1,53 @@
-# Zabbix Lab JUS
+# Zabbix Lab JUS 🚀
 
-Este repositorio contiene un playbook de Ansible para instalar y configurar **Zabbix Server 6.0** en un entorno **Debian 10**.
+Este repositorio contiene un framework de automatización con **Ansible Roles** diseñado para la implementación profesional y escalable de Zabbix Server en entornos multi-plataforma.
 
-## Características
-- Instalación de Zabbix Server, Frontend y Agente.
-- Configuración de PHP 7.3 con PHP-FPM y Apache (mod_proxy_fcgi).
-- Configuración automática de la base de datos MariaDB (seguridad incluida).
-- Bypass automático del asistente de configuración web (Wizard).
-- Soporte para bases de datos externas mediante variables.
-- Configuración de Firewalld.
+## Arquitectura Modular (Ansible Roles)
+El proyecto ha sido refactorizado de un playbook monolítico a una estructura de roles, lo que permite una gestión desacoplada de cada servicio:
+
+- **common**: Configuración base del sistema, locales y zona horaria.
+- **apache**: Servidor web optimizado con soporte para PHP-FPM.
+- **php**: Gestión dinámica de versiones (7.3 vs 8.4) y optimización de recursos.
+- **mariadb**: Motor de base de datos con hardening de seguridad aplicado.
+- **firewalld**: Gestión automatizada de reglas de tráfico.
+- **zabbix_server**: Instalación del núcleo, gestión de esquemas y lógica de base de datos.
+- **zabbix_agent**: Despliegue del agente de monitoreo local.
+- **zabbix_frontend**: Interfaz web con bypass automático del asistente (Wizard).
+
+## Soporte Multi-OS y Versiones
+El playbook detecta automáticamente la distribución y aplica las configuraciones correspondientes:
+
+| Distribución | Versión Zabbix | Versión PHP |
+| :--- | :--- | :--- |
+| **Debian 10 (Buster)** | Zabbix 6.0 LTS | PHP 7.3 |
+| **Debian 13 (Trixie)** | Zabbix 7.0 LTS | PHP 8.4 |
+
+## Características Principales
+- **Carga Dinámica de Variables**: Los roles cargan configuraciones específicas según la versión del OS detectada.
+- **Resiliencia de Base de Datos**: Detección automática de esquemas incompletos y restauración inteligente.
+- **Bypass del Wizard**: Configuración automática del frontend para acceso inmediato.
+- **Seguridad**: Hardening de MariaDB y gestión estricta de puertos vía Firewalld.
 
 ## Requisitos
-- Debian 10.
-- Ansible instalado localmente.
+- Host de control con Ansible.
+- Debian 10 o Debian 13 en los servidores destino.
 - Usuario con permisos de sudo sin contraseña.
 
-## Uso
-1. Clonar el repositorio.
-2. Editar `inventory.yml` con la IP de tu servidor.
-3. Editar `vars.yml` con tus credenciales preferidas.
-4. Ejecutar el playbook:
+## Guía de Uso Rápido
+1. **Clonar el repositorio**:
+   ```bash
+   git clone https://github.com/Yepeto81/zabbix-lab-jus.git
+   ```
+2. **Configurar el Inventario**:
+   Edita el archivo `inventory.yml` para definir tus hosts y variables globales (IPs, contraseñas, zona horaria).
+3. **Ejecutar el Despliegue**:
    ```bash
    ansible-playbook -i inventory.yml setup_zabbix.yml
    ```
 
+## Credenciales por Defecto
+- **Usuario**: `Admin`
+- **Contraseña**: `zabbix`
+
 ## Autor
-Desarrollado con la ayuda de Antigravity (Raquel).
+Desarrollado con la ayuda de **Antigravity (Raquel)**.
