@@ -1,0 +1,80 @@
+---
+- name: Cargar variables específicas por OS
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+    - "default.yml"
+
+- name: Descargar e instalar repositorio de Zabbix
+  apt:
+    deb: "{{ zabbix_repo_url }}"
+
+- name: Actualizar apt con el nuevo repositorio
+  apt:
+    update_cache: yes
+
+- name: Instalar componentes de Zabbix Server
+  apt:
+    name:
+      - zabbix-server-mysql
+      - zabbix-sql-scripts
+      - zabbix-get
+    state: present
+
+- name: Configurar log_bin_trust_function_creators global
+  mysql_variables:
+    variable: log_bin_trust_function_creators
+    value: 1
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  when: not zabbix_db_external
+
+- name: Verificar si el esquema está completo (conteo de tablas)
+  shell: mysql -u{{ zabbix_db_user }} -p{{ zabbix_db_pass }} {{ zabbix_db_name }} -e "show tables;" | wc -l
+  register: zabbix_table_count
+  changed_when: false
+  ignore_errors: yes
+
+- name: Vaciar base de datos si el esquema está incompleto
+  mysql_db:
+    name: "{{ zabbix_db_name }}"
+    state: absent
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  when: not zabbix_db_external and (zabbix_table_count.rc != 0 or zabbix_table_count.stdout|int < 150)
+
+- name: Recrear base de datos para Zabbix
+  mysql_db:
+    name: "{{ zabbix_db_name }}"
+    encoding: utf8mb4
+    collation: utf8mb4_bin
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  when: not zabbix_db_external and (zabbix_table_count.rc != 0 or zabbix_table_count.stdout|int < 150)
+
+- name: Importar esquema de Zabbix
+  shell: zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -u{{ zabbix_db_user }} -p{{ zabbix_db_pass }} {{ zabbix_db_name }}
+  when: not zabbix_db_external and (zabbix_table_count.rc != 0 or zabbix_table_count.stdout|int < 150)
+
+- name: Desactivar log_bin_trust_function_creators
+  mysql_variables:
+    variable: log_bin_trust_function_creators
+    value: 0
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  when: not zabbix_db_external
+
+- name: Configurar Zabbix Server conf
+  lineinfile:
+    path: "{{ zabbix_server_conf_path }}"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: '^DBHost=', line: 'DBHost={{ zabbix_db_host }}' }
+    - { regexp: '^DBName=', line: 'DBName={{ zabbix_db_name }}' }
+    - { regexp: '^DBUser=', line: 'DBUser={{ zabbix_db_user }}' }
+    - { regexp: '^# DBPassword=', line: 'DBPassword={{ zabbix_db_pass }}' }
+    - { regexp: '^# AllowUnsupportedDBVersions=', line: 'AllowUnsupportedDBVersions={{ zabbix_allow_unsupported_db }}' }
+
+- name: Habilitar e iniciar Zabbix Server
+  service:
+    name: zabbix-server
+    state: restarted
+    enabled: yes

@@ -1,0 +1,27 @@
+---
+- name: Actualizar caché de apt
+  apt:
+    update_cache: yes
+
+- name: Instalar paquetes básicos y utilidades
+  apt:
+    name:
+      - unzip
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - netcat-openbsd
+      - sudo
+      - strace
+    state: present
+
+- name: Configurar zona horaria del sistema
+  timezone:
+    name: "{{ zabbix_timezone }}"
+
+- name: Generar locale en_US.UTF-8
+  locale_gen:
+    name: en_US.UTF-8
+    state: present

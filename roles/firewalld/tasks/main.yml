@@ -1,0 +1,19 @@
+---
+- name: Instalar Firewalld
+  apt:
+    name: firewalld
+    state: present
+
+- name: Habilitar e iniciar Firewalld
+  service:
+    name: firewalld
+    state: started
+    enabled: yes
+
+- name: Configurar puertos en Firewall
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  loop: "{{ firewall_ports }}"

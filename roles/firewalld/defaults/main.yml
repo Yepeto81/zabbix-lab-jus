@@ -1,0 +1,9 @@
+---
+firewall_ports:
+  - 80/tcp
+  - 443/tcp
+  - 22/tcp
+  - 3306/tcp
+  - 9090/tcp
+  - 10050/tcp
+  - 10051/tcp

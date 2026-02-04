@@ -1,0 +1,56 @@
+---
+- name: Cargar variables específicas por OS
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+    - "default.yml"
+
+- name: Instalar PHP y extensiones
+  apt:
+    name:
+      - php{{ php_version }}
+      - libapache2-mod-php{{ php_version }}
+      - php{{ php_version }}-cli
+      - php{{ php_version }}-mysql
+      - php{{ php_version }}-zip
+      - php{{ php_version }}-curl
+      - php{{ php_version }}-xml
+      - php{{ php_version }}-common
+      - php{{ php_version }}-fpm
+    state: present
+
+- name: Configurar PHP CLI ini
+  lineinfile:
+    path: "/etc/php/{{ php_version }}/cli/php.ini"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: '^max_execution_time =', line: 'max_execution_time = {{ php_max_execution_time }}' }
+    - { regexp: '^memory_limit =', line: 'memory_limit = {{ php_memory_limit }}' }
+    - { regexp: '^cgi.fix_pathinfo =', line: 'cgi.fix_pathinfo = 0' }
+    - { regexp: '^;?date.timezone =', line: 'date.timezone = {{ zabbix_timezone }}' }
+
+- name: Configurar PHP FPM www.conf
+  lineinfile:
+    path: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: '^user =', line: 'user = www-data' }
+    - { regexp: '^group =', line: 'group = www-data' }
+    - { regexp: '^listen =', line: 'listen = /run/php/php{{ php_version }}-fpm.sock' }
+    - { regexp: '^;?listen.owner =', line: 'listen.owner = www-data' }
+    - { regexp: '^;?listen.group =', line: 'listen.group = www-data' }
+    - { regexp: '^;?listen.allowed_clients =', line: 'listen.allowed_clients = 0.0.0.0' }
+    - { regexp: '^pm =', line: 'pm = dynamic' }
+
+- name: Habilitar configuración de PHP-FPM en Apache
+  command: a2enconf php{{ php_version }}-fpm
+  args:
+    creates: /etc/apache2/conf-enabled/php{{ php_version }}-fpm.conf
+
+- name: Habilitar e iniciar PHP-FPM
+  service:
+    name: "php{{ php_version }}-fpm"
+    state: started
+    enabled: yes
