@@ -1,4 +1,10 @@
 ---
+- name: Cargar variables específicas por OS
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+    - "default.yml"
+
 - name: Instalar Zabbix Agent
   apt:
     name: zabbix-agent

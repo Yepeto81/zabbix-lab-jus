@@ -1,4 +1,10 @@
 ---
+- name: Cargar variables específicas por OS
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+    - "default.yml"
+
 - name: Descargar e instalar repositorio de Zabbix
   apt:
     deb: "{{ zabbix_repo_url }}"
@@ -22,15 +28,31 @@
     login_unix_socket: /var/run/mysqld/mysqld.sock
   when: not zabbix_db_external
 
-- name: Verificar si el esquema ya fue importado
-  shell: mysql -u{{ zabbix_db_user }} -p{{ zabbix_db_pass }} {{ zabbix_db_name }} -e "show tables;" | grep users
-  register: zabbix_schema_check
-  ignore_errors: yes
+- name: Verificar si el esquema está completo (conteo de tablas)
+  shell: mysql -u{{ zabbix_db_user }} -p{{ zabbix_db_pass }} {{ zabbix_db_name }} -e "show tables;" | wc -l
+  register: zabbix_table_count
   changed_when: false
+  ignore_errors: yes
+
+- name: Vaciar base de datos si el esquema está incompleto
+  mysql_db:
+    name: "{{ zabbix_db_name }}"
+    state: absent
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  when: not zabbix_db_external and (zabbix_table_count.rc != 0 or zabbix_table_count.stdout|int < 150)
+
+- name: Recrear base de datos para Zabbix
+  mysql_db:
+    name: "{{ zabbix_db_name }}"
+    encoding: utf8mb4
+    collation: utf8mb4_bin
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  when: not zabbix_db_external and (zabbix_table_count.rc != 0 or zabbix_table_count.stdout|int < 150)
 
 - name: Importar esquema de Zabbix
   shell: zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -u{{ zabbix_db_user }} -p{{ zabbix_db_pass }} {{ zabbix_db_name }}
-  when: not zabbix_db_external and zabbix_schema_check.rc != 0
+  when: not zabbix_db_external and (zabbix_table_count.rc != 0 or zabbix_table_count.stdout|int < 150)
 
 - name: Desactivar log_bin_trust_function_creators
   mysql_variables:
