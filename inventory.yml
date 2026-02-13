@@ -13,7 +13,7 @@ all:
       zabbix_server_name: "Zabbix 6.0 Server (Deb10)"
 
     zabbix_server_deb13:
-      ansible_host: 192.168.30.21  # IP de fantasía
+      ansible_host: 192.168.1.184
       ansible_user: yepeto
       ansible_become: yes
       zabbix_db_external: false
